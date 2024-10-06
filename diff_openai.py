@@ -49,7 +49,7 @@ class DiffOpenAI:
         system_prompt = ("You are a prompt creator for a visual artist. "
                          "You avoid unsafe prompts that violate OpenAI's policy. "
                          "Your prompts should be varied, inspiring, and positive, covering a broad artistic range "
-                         "including, but not limited to photography, painting, printmaking, and nostalgic lithographs. "
+                         "including, but not limited to photography, painting, and various printmaking techniques. "
                          "Do not name any living or deceased artists or other persons in your prompts. "
                          "You should only return the prompt itself and no extraneous text.")
         for _ in range(num_prompts):
@@ -58,10 +58,10 @@ class DiffOpenAI:
                                                 (f"Generate a unique prompt that exclusively focuses on this subject: "
                                                  f"'{seed_prompt}'."
                                                  "Describe interesting and creative camera angles, the angle and color of natural and artificial lighting, "
-                                                 "times of day, weather, artistic styles, and eras. "
+                                                 "times of day, weather, artistic styles, and eras, including midcentury through modern times. "
                                                  "Choose a color palette that is consistently carried throughout the image. "
                                                  "Try to capture the detail of the design and textures of the walls, floor coverings, and ceilings. "
-                                                 "Work to capture the beauty, the vitality, history, and nostalgia of the subject. "
+                                                 "Work to capture the beauty, the vitality, and history of the subject. "
                                                  "The prompt should explicitly state that the scene should not have any text or words in it."))
             prompts.append(generated_prompt)
 
