@@ -52,8 +52,8 @@ if __name__ == "__main__":
                     image_with_logo, final_image_filename)
 
                 # Log the details to the CSV file using ImageHelper
-                # image_helper.log_to_csv(
-                #     prompt, (img_width, img_height), final_image_filename)
+                image_helper.log_to_csv(
+                    prompt, (img_width, img_height), final_image_filename)
 
             except Exception as e:
                 print(f"An error occurred: {e}")

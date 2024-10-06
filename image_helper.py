@@ -9,12 +9,14 @@ from datetime import datetime
 class ImageHelper:
     def __init__(self, image_folder="images", logo_folder="logo"):
         # Timestamped log file
-        self.csv_file = f"image_log_{
-            datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+        csv_file = (f"image_log_"
+                    f"{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv")
         self.image_folder = image_folder
         self.logo_folder = logo_folder
         os.makedirs(self.image_folder, exist_ok=True)
         os.makedirs(self.logo_folder, exist_ok=True)
+        self.csv_file = os.path.join(
+            self.image_folder, csv_file)
 
     def sanitize_filename(self, text: str) -> str:
         """
@@ -140,10 +142,23 @@ class ImageHelper:
                 f"An error occurred while evaluating the logo background: {e}")
             return "error"
 
+    def get_perceptual_brightness(self, rgb_pixel: tuple) -> float:
+        """
+        Calculates the perceptual brightness of an RGB pixel using weighted values for R, G, and B.
+
+        Args:
+            rgb_pixel (tuple): A tuple containing the (R, G, B) values of the pixel.
+
+        Returns:
+            float: The perceptual brightness value for the pixel.
+        """
+        r, g, b = rgb_pixel
+        return 0.299 * r + 0.587 * g + 0.114 * b
+
     def evaluate_background_brightness(self, image: Image.Image, logo_width: int, logo_height: int) -> str:
         """
         Evaluates the brightness of the background region where the logo is placed (top center of the image).
-        Returns "dark", "medium", or "light" based on the average brightness of that region.
+        Returns "dark", "medium", or "light" based on the average perceptual brightness of that region.
 
         Args:
             image (Image.Image): The image on which the logo will be placed.
@@ -153,23 +168,26 @@ class ImageHelper:
         Returns:
             str: A string indicating the brightness level of the background ("dark", "medium", or "light").
         """
-        # Convert the image to grayscale to evaluate brightness
-        grayscale_image = image.convert("L")
+        # Convert the image to RGB mode
+        rgb_image = image.convert("RGB")
 
         # Define the region where the logo will be placed (top center)
         logo_x = (image.width - logo_width) // 2
         logo_y = 20  # Assuming 20 pixels margin from the top
-        logo_region = grayscale_image.crop(
+        logo_region = rgb_image.crop(
             (logo_x, logo_y, logo_x + logo_width, logo_y + logo_height))
 
-        # Calculate the average brightness of the region
+        # Calculate the average perceptual brightness of the region
         pixels = list(logo_region.getdata())
-        avg_brightness = sum(pixels) / len(pixels)
+        total_brightness = sum(self.get_perceptual_brightness(pixel)
+                               for pixel in pixels)
+        avg_brightness = total_brightness / len(pixels)
+        print(f"Average brightness of the logo region: {avg_brightness}")
 
-        # Define brightness thresholds
-        if avg_brightness < 85:
+        # Adjust brightness thresholds based on perceptual brightness
+        if avg_brightness < 35:
             return "dark"
-        elif 85 <= avg_brightness < 170:
+        elif 35 <= avg_brightness < 45:
             return "medium"
         else:
             return "light"
@@ -221,117 +239,4 @@ class ImageHelper:
 
         except Exception as e:
             print(f"An error occurred while adding the logo: {e}")
-            return image
-
-    def add_glow_logo_to_image(self, image: Image.Image) -> Image.Image:
-        """
-        Adds a white glow behind where the logo would be placed and ensures that the glow diffuses naturally.
-
-        Args:
-            image (Image.Image): The image on which the glow and logo will be placed.
-
-        Returns:
-            Image.Image: The modified image with the glow and logo added.
-        """
-        try:
-            # Find the first logo file in the logo folder
-            logo_files = glob.glob(os.path.join(self.logo_folder, "*"))
-            if not logo_files:
-                print("No logo files found. Returning the original image.")
-                return image  # Return the original image unchanged if no logo is found
-
-            logo_path = logo_files[0]
-            logo = Image.open(logo_path)
-
-            # Resize the logo to fit comfortably at the top of the image (50% of image width)
-            max_logo_width = image.width // 2
-            logo_ratio = logo.width / logo.height
-            logo_height = int(max_logo_width / logo_ratio)
-            logo = logo.resize((max_logo_width, logo_height),
-                               Image.Resampling.LANCZOS)
-
-            # Ensure the image is in RGBA mode
-            image = image.convert("RGBA")
-
-            # Create a larger canvas for the glow to diffuse naturally
-            # Add more space for the glow
-            glow_canvas_size = (logo.width + 600, logo.height + 400)
-            # Transparent background for glow
-            glow = Image.new("RGBA", glow_canvas_size, (0, 0, 0, 0))
-
-            # Draw a white shape (ellipse) in place of the logo to create the glow
-            draw = ImageDraw.Draw(glow)
-            draw.ellipse([(100, 100), (glow_canvas_size[0]-100,
-                                       glow_canvas_size[1]-100)], fill=(255, 255, 255, 255))
-
-            # Apply the Gaussian blur for the glow effect
-            glow = glow.filter(ImageFilter.GaussianBlur(100))  # Stronger blur
-
-            # Create a new RGBA image for the glow layer
-            glow_layer = Image.new("RGBA", image.size, (0, 0, 0, 0))
-
-            # Center the glow at the top of the image
-            glow_x = (image.width - glow_canvas_size[0]) // 2
-            glow_y = 20  # Add space from the top
-
-            # Paste the glow onto the glow layer
-            glow_layer.paste(glow, (glow_x, glow_y), mask=glow)
-
-            # Combine the original image with the glow layer
-            image_with_glow = Image.alpha_composite(image, glow_layer)
-
-            # LOGO CODE COMMENTED OUT BELOW:
-            logo_layer = Image.new("RGBA", image.size, (0, 0, 0, 0))
-            # Adjust logo position based on glow
-            logo_layer.paste(logo, (glow_x + 100, glow_y + 100), mask=logo)
-            final_image = Image.alpha_composite(image_with_glow, logo_layer)
-            return final_image.convert("RGB")
-
-            # Return the image with the glow only (no logo)
-            # return image_with_glow.convert("RGB")
-
-        except Exception as e:
-            print(f"An error occurred while applying the glow: {e}")
-            return image
-
-    def test_glow_generation(self, image: Image.Image) -> Image.Image:
-        """
-        Test function to create a glow around a simple white shape (circle) to verify if the glow effect works.
-        This method saves the glow separately to verify if it's being generated correctly.
-
-        Args:
-            image (Image.Image): The image on which the glow would be placed.
-
-        Returns:
-            Image.Image: The original image (for testing purposes).
-        """
-        try:
-            # Create a simple white circle as the 'logo' for testing
-            logo_size = (800, 200)  # Test with a simple white circle
-            logo = Image.new("RGBA", logo_size, (255, 255, 255, 0))
-            draw = ImageDraw.Draw(logo)
-            draw.ellipse((0, 0, logo_size[0], logo_size[1]), fill=(
-                255, 255, 255, 255))
-
-            # Create a larger canvas for the glow to diffuse naturally
-            # Add space for the glow
-            glow_canvas_size = (logo.width + 200, logo.height + 200)
-            glow = Image.new("RGBA", glow_canvas_size, (0, 0, 0, 0))
-
-            # Position the circle in the middle of the canvas for the glow
-            logo_x_on_glow = (glow_canvas_size[0] - logo.width) // 2
-            logo_y_on_glow = (glow_canvas_size[1] - logo.height) // 2
-            glow.paste(logo, (logo_x_on_glow, logo_y_on_glow), mask=logo)
-
-            # Apply a strong Gaussian blur to create the glow
-            glow = glow.filter(ImageFilter.GaussianBlur(50))
-
-            # Save the glow layer to inspect it
-            glow.save("test_glow.png")
-
-            print("Glow saved as 'test_glow.png'. Please inspect the output.")
-            return image  # Return original image for now
-
-        except Exception as e:
-            print(f"An error occurred while generating the glow: {e}")
             return image
