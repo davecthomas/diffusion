@@ -1,5 +1,6 @@
 from diff_openai import DiffOpenAI
 from image_helper import ImageHelper
+import time
 
 
 if __name__ == "__main__":
@@ -7,15 +8,13 @@ if __name__ == "__main__":
     img_width, img_height = 1024, 1792
     diff_openai = DiffOpenAI()
     image_helper = ImageHelper()
-    # image_helper.test_glow_generation(
-    #     "./images/20241006_072210_logo_exterior_view_of_a_quiet_and_clean_gas_station_with_no_people_or_cars__not_abandoned__but_lackin_0_1024x1792.png")
 
     # List of seed prompts related to different locations
     seed_prompts = [
         "close-in exterior view of a quiet and clean gas station with no people or cars; not abandoned, but lacking current customer activity",
-        "interior view of a neighborhood grocery store with no shoppers, no shopping carts, and with fully stocked shelves",
-        "interior view of a corner convenience store with no shoppers",
-        "interior view of a cozy coffee shop scene with no customers",
+        "interior view of a neighborhood grocery store produce section showcasing beautiful and healthy produce, close-up. No shopping carts nor shoppers are visible",
+        "interior view of a brightly lit and clean corner convenience store with no shoppers or employees visible",
+        "interior view of a cozy coffee shop scene with no customers.",
         "interior view of a quaint, small, not fancy, but clean restaurant with no customers or people in the scene",
     ]
 
@@ -30,8 +29,21 @@ if __name__ == "__main__":
         for i, prompt in enumerate(prompts):
             try:
                 print(f"\n\tGenerating image for prompt:\n\t{prompt}\n")
+                # Start timer for the total time of this iteration
+                iteration_start_time = time.time()
+
+                # Start timer for the image generation
+                image_gen_start_time = time.time()
+
+                print(f"\n\tGenerating image for prompt:\n\t{prompt}\n")
                 img_data = diff_openai.generate_image(
                     prompt, dimensions=(img_width, img_height))
+
+                # End timer for image generation
+                image_gen_end_time = time.time()
+                image_gen_duration = image_gen_end_time - image_gen_start_time
+                print(f"Image generation time: {
+                      image_gen_duration:.2f} seconds")
 
                 # Save raw image using ImageHelper
                 raw_image_filename = image_helper.save_raw_image(
@@ -46,6 +58,10 @@ if __name__ == "__main__":
                 # Add the logo to the cropped image
                 image_with_logo = image_helper.add_logo_to_image(
                     cropped_img, image_lightness)
+                image_manipulation_end_time = time.time()
+                image_manipulation_duration = image_manipulation_end_time - image_gen_end_time
+                print(
+                    f"Image manipulation time: {image_manipulation_duration:.2f} seconds")
                 final_image_filename = (f"logo_{image_helper.sanitize_filename(seed_prompt)}_{i}_"
                                         f"{img_width}x{img_height}.png")
                 final_image_filename = image_helper.save_image(

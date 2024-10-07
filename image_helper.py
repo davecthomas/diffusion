@@ -88,11 +88,20 @@ class ImageHelper:
     def log_to_csv(self, prompt: str, dimensions: tuple, filename: str):
         """
         Logs the prompt, dimensions, and filename to a CSV file with a header row.
+        The header row is only written if the file is new.
         """
+        file_exists = os.path.exists(self.csv_file)
+
         with open(self.csv_file, mode='a', newline='') as file:
             writer = csv.writer(file)
-            writer.writerow(["Prompt", "Width", "Height", "Filename"])
+
+            # Write the header only if the file is new
+            if not file_exists:
+                writer.writerow(["Prompt", "Width", "Height", "Filename"])
+
+            # Write the actual data
             writer.writerow([prompt, dimensions[0], dimensions[1], filename])
+
         print(f"Logged prompt and details to {self.csv_file}")
 
     def cleanup_raw_files(self):
