@@ -3,6 +3,8 @@
 __pycache__/
 
 images/
+style_ref_images/
+similar_images/
 logo/
 
 # ignore output files

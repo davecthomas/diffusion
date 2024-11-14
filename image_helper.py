@@ -1,22 +1,29 @@
 import csv
 import glob
+import io
 import os
 import re
 from PIL import Image, ImageOps, ImageFilter, ImageDraw
+# from IPython.display import Image as Img2, HTML, display
+# import io
 from datetime import datetime
 
 
 class ImageHelper:
-    def __init__(self, image_folder="images", logo_folder="logo"):
+    def __init__(self, image_folder="images", logo_folder="logo", hex_mode=False):
         # Timestamped log file
         csv_file = (f"image_log_"
                     f"{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv")
-        self.image_folder = image_folder
-        self.logo_folder = logo_folder
-        os.makedirs(self.image_folder, exist_ok=True)
-        os.makedirs(self.logo_folder, exist_ok=True)
-        self.csv_file = os.path.join(
-            self.image_folder, csv_file)
+        self.hex_mode = hex_mode
+        if not hex_mode:
+            self.image_folder = image_folder
+            self.logo_folder = logo_folder
+            os.makedirs(self.image_folder, exist_ok=True)
+            os.makedirs(self.logo_folder, exist_ok=True)
+            self.csv_file = os.path.join(
+                self.image_folder, csv_file)
+        else:
+            self.csv_file = csv_file
 
     def sanitize_filename(self, text: str) -> str:
         """
@@ -43,14 +50,18 @@ class ImageHelper:
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
 
         # Prepend the timestamp to the filename
-        raw_image_filename = f"{
-            self.image_folder}/{timestamp}_{sanitized_prompt}_{idx + 1}_raw.png"
+        if not self.hex_mode:
+            raw_image_filename = (
+                f"{self.image_folder}/{timestamp}_{sanitized_prompt}_{idx + 1}_raw.png")
+        else:
+            raw_image_filename = (
+                f"{timestamp}_{sanitized_prompt}_{idx + 1}_raw.png")
 
         # Save the raw image data
         with open(raw_image_filename, 'wb') as raw_img_file:
             raw_img_file.write(img_data)
 
-        print(f"Raw image saved as {raw_image_filename}")
+        # print(f"Raw image saved as {raw_image_filename}")
         return raw_image_filename
 
     def crop_image(self, image_path: str, target_width: int, target_height: int) -> Image.Image:
@@ -66,7 +77,7 @@ class ImageHelper:
             print(f"Error cropping image {image_path}: {e}")
             raise
 
-    def save_image(self, img: Image.Image, filename: str):
+    def save_image(self, img_data: bytes, filename: str):
         """
         Saves the image to the images/ directory with a date and timestamp prepended to the filename.
         """
@@ -77,15 +88,18 @@ class ImageHelper:
         filename_with_timestamp = f"{timestamp}_{filename}"
 
         # Construct the full path for the file
-        final_filename = os.path.join(
-            self.image_folder, filename_with_timestamp)
+        if not self.hex_mode:
+            final_filename = os.path.join(
+                self.image_folder, filename_with_timestamp)
+        else:
+            final_filename = filename_with_timestamp
 
-        # Save the image with the timestamped filename
-        img.save(final_filename)
-        print(f"Image saved as {final_filename}")
+        with open(final_filename, 'wb') as img_file:
+            img_file.write(img_data)
+        # print(f"Image saved as {final_filename}")
         return final_filename
 
-    def log_to_csv(self, prompt: str, dimensions: tuple, filename: str):
+    def log_to_csv(self, prompt: str, dimensions: tuple, filename: str, image_gen_time: float = 0, image_manip_time: float = 0):
         """
         Logs the prompt, dimensions, and filename to a CSV file with a header row.
         The header row is only written if the file is new.
@@ -97,24 +111,68 @@ class ImageHelper:
 
             # Write the header only if the file is new
             if not file_exists:
-                writer.writerow(["Prompt", "Width", "Height", "Filename"])
+                writer.writerow(
+                    ["Prompt", "Width", "Height", "Filename", "Image gen time", "Image manip time"])
 
             # Write the actual data
-            writer.writerow([prompt, dimensions[0], dimensions[1], filename])
+            writer.writerow([prompt, dimensions[0], dimensions[1],
+                            filename, image_gen_time, image_manip_time])
 
-        print(f"Logged prompt and details to {self.csv_file}")
+        # print(f"Logged prompt and details to {self.csv_file}")
+
+    def cleanup_csv_files(self):
+        """
+        Deletes all CSV files
+        """
+        if not self.hex_mode:
+            png_file_pattern = os.path.join(self.image_folder, "*.png")
+        else:
+            png_file_pattern = "*.csv"
+
+        files_to_delete = glob.glob(png_file_pattern)
+
+        for file_path in files_to_delete:
+            try:
+                os.remove(file_path)
+                # print(f"Deleted {file_path}")
+            except Exception as e:
+                print(f"Error deleting file {file_path}: {e}")
+
+    def cleanup_png_files(self):
+        """
+        Deletes all PNG files except those that contain 'logo' in their filename.
+        """
+        if not self.hex_mode:
+            png_file_pattern = os.path.join(self.image_folder, "*.png")
+        else:
+            png_file_pattern = "*.png"
+
+        files_to_delete = glob.glob(png_file_pattern)
+
+        for file_path in files_to_delete:
+            # Skip files that end with '_logo.png'
+            if os.path.basename(file_path).endswith('_logo.png'):
+                continue
+            try:
+                os.remove(file_path)
+                # print(f"Deleted {file_path}")
+            except Exception as e:
+                print(f"Error deleting file {file_path}: {e}")
 
     def cleanup_raw_files(self):
         """
         Deletes all files that contain 'raw.png' in their filename.
         """
-        raw_file_pattern = os.path.join(self.image_folder, "*raw.png")
+        if not self.hex_mode:
+            raw_file_pattern = os.path.join(self.image_folder, "*raw.png")
+        else:
+            raw_file_pattern = "*raw.png"
         files_to_delete = glob.glob(raw_file_pattern)
 
         for file_path in files_to_delete:
             try:
                 os.remove(file_path)
-                print(f"Deleted {file_path}")
+                # print(f"Deleted {file_path}")
             except Exception as e:
                 print(f"Error deleting file {file_path}: {e}")
 
@@ -131,13 +189,7 @@ class ImageHelper:
             str: A string indicating the brightness level of the background ("dark", "medium", or "light").
         """
         try:
-            # Find the first logo file in the logo folder
-            logo_files = glob.glob(os.path.join(self.logo_folder, "*"))
-            if not logo_files:
-                print("No logo files found.")
-                return "no_logo"
-
-            logo_path = logo_files[0]
+            logo_path = "medium_logo.png"
             logo = Image.open(logo_path)
 
             # Get the width and height of the logo
@@ -147,9 +199,9 @@ class ImageHelper:
             return self.evaluate_background_brightness(image, logo_width, logo_height)
 
         except Exception as e:
-            print(
-                f"An error occurred while evaluating the logo background: {e}")
-            return "error"
+            # print(
+            #     f"An error occurred while evaluating the logo background: {e}")
+            return "medium"
 
     def get_perceptual_brightness(self, rgb_pixel: tuple) -> float:
         """
@@ -191,7 +243,7 @@ class ImageHelper:
         total_brightness = sum(self.get_perceptual_brightness(pixel)
                                for pixel in pixels)
         avg_brightness = total_brightness / len(pixels)
-        print(f"Average brightness of the logo region: {avg_brightness}")
+        # print(f"Average brightness of the logo region: {avg_brightness}")
 
         # Adjust brightness thresholds based on perceptual brightness
         if avg_brightness < 35:
@@ -214,14 +266,16 @@ class ImageHelper:
         """
         try:
             if image_lightness == "dark":
-                logo_path = os.path.join(self.logo_folder, "light_logo.png")
+                if not self.hex_mode:
+                    logo_path = os.path.join(
+                        self.logo_folder, "light_logo.png")
+                else:
+                    logo_path = "light_logo.png"
             else:
-                logo_path = os.path.join(self.logo_folder, "dark_logo.png")
-            # # Find the first logo file in the logo folder
-            # logo_files = glob.glob(os.path.join(self.logo_folder, "*"))
-            # if not logo_files:
-            #     print("No logo files found. Returning the original image.")
-            #     return image
+                if not self.hex_mode:
+                    logo_path = os.path.join(self.logo_folder, "dark_logo.png")
+                else:
+                    logo_path = "dark_logo.png"
 
             # logo_path = logo_files[0]
             logo = Image.open(logo_path)
@@ -249,3 +303,158 @@ class ImageHelper:
         except Exception as e:
             print(f"An error occurred while adding the logo: {e}")
             return image
+
+    def create_download_button(file_name, button_text=None, hex_mode=False):
+        """
+        Generates an HTML button for downloading a file located in the current directory.
+
+        :param file_name: Name of the file to download.
+        :param button_text: Optional text to display on the button.
+        :return: Displays an HTML button that triggers the download.
+        """
+        if button_text is None:
+            button_text = f"Download {file_name}"
+        html = f'''
+        <a href="{file_name}" download="{file_name}">
+            <button style="
+                background-color: #4CAF50;
+                border: none;
+                color: white;
+                padding: 10px 20px;
+                text-align: center;
+                text-decoration: none;
+                display: inline-block;
+                font-size: 16px;
+                margin: 4px 2px;
+                cursor: pointer;
+                border-radius: 4px;
+            ">{button_text}</button>
+        </a>
+        '''
+        if hex_mode:
+            display(HTML(html))
+
+    def display_image_in_hex(self, output_image, hex_mode=False, scale_percent=100):
+        if not hex_mode:
+            return
+        """
+        Displays a resized image in the Hex environment with optional scaling.
+
+        :param output_image: Filename of the image to display.
+        :param hex_mode: If True, displays the image within Hex.
+        :param scale_percent: Percentage to scale the image size (e.g., 50 for 50%).
+        """
+        if not hex_mode:
+            print("Hex mode is disabled. Image will not be displayed.")
+            return
+
+        # Check if the file exists in the current directory
+        if not os.path.isfile(output_image):
+            print(f"Error: The file '{
+                  output_image}' does not exist in the current directory.")
+            return
+
+        # Validate scale_percent
+        if not isinstance(scale_percent, (int, float)):
+            print("Error: scale_percent must be a number representing the percentage.")
+            return
+
+        if not (0 < scale_percent <= 100):
+            print("Error: scale_percent must be between 1 and 100.")
+            return
+
+        try:
+            # Open the image to get its original dimensions
+            with Image.open(output_image) as img:
+                original_width, original_height = img.size
+                # print(f"Original Size: {original_width}px (width) x {original_height}px (height)")
+
+                # Calculate new dimensions based on scale_percent
+                new_width = max(1, int(original_width * (scale_percent / 100)))
+                new_height = max(
+                    1, int(original_height * (scale_percent / 100)))
+                # print(f"Scaled Size: {new_width}px (width) x {new_height}px (height)")
+
+                # Resize the image using ANTIALIAS filter for high-quality downsampling
+                img_resized = img.resize(
+                    (new_width, new_height), Image.Resampling.LANCZOS)
+
+                # Save the resized image to a bytes buffer
+                buffer = io.BytesIO()
+                img_resized.save(buffer, format=img.format)
+                buffer.seek(0)
+
+                # Create an IPython.display.Image object from the buffer
+                display_img = Img2(data=buffer.read())
+                display(display_img)
+
+        except Exception as e:
+            print(f"An error occurred while processing the image: {e}")
+
+    def get_image_file_paths(self, folder_path: str) -> list:
+        """
+        Returns a list of image file paths found in the given folder.
+        """
+        import os
+        import glob
+
+        # Define allowed image extensions
+        image_extensions = ('*.png', '*.jpg', '*.jpeg', '*.gif', '*.bmp')
+
+        image_paths = []
+        for extension in image_extensions:
+            image_paths.extend(glob.glob(os.path.join(folder_path, extension)))
+
+        # Sort the list of image paths for consistency
+        image_paths.sort()
+
+        return image_paths
+
+    def convert_to_png(self, image_filepath: str) -> str:
+        """
+        Converts a JPEG image to PNG format. If the image is already a PNG, it returns the original filepath.
+        This method currently supports only JPG and JPEG formats.
+
+        Args:
+            image_filepath (str): The file path to the image to be converted.
+
+        Returns:
+            str: The file path to the converted PNG image.
+
+        Raises:
+            FileNotFoundError: If the specified image file does not exist.
+            ValueError: If the image format is not JPG or JPEG.
+            Exception: If an error occurs during the conversion process.
+        """
+        if not os.path.isfile(image_filepath):
+            raise FileNotFoundError(
+                f"The file '{image_filepath}' does not exist.")
+
+        file_extension = os.path.splitext(image_filepath)[1].lower()
+
+        if file_extension in ['.jpg', '.jpeg']:
+            try:
+                # Open the original image
+                with Image.open(image_filepath) as img:
+                    # Define the new filename with .png extension
+                    new_filepath = os.path.splitext(image_filepath)[0] + '.png'
+
+                    # Convert and save the image as PNG
+                    img.save(new_filepath, 'PNG')
+
+                print(f"Converted '{image_filepath}' to '{new_filepath}'.")
+                return new_filepath
+
+            except Exception as e:
+                print(f"An error occurred while converting '{
+                      image_filepath}' to PNG: {e}")
+                raise
+
+        elif file_extension == '.png':
+            print(f"The file '{
+                  image_filepath}' is already a PNG. No conversion needed.")
+            return image_filepath
+
+        else:
+            raise ValueError(
+                "Unsupported file format. Only JPG and JPEG formats can be converted to PNG.")
