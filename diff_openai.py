@@ -432,11 +432,13 @@ def generate_images_from_reference_image():
         list_dict_img_variations = diff_openai.get_image_variations(
             image, num_variations=4, dimensions=(img_width, img_height))
         for idx, dict_img_variations in enumerate(tqdm(list_dict_img_variations, desc="Saving Images", unit="image", leave=True)):
+            variation_filename = f"{dict_img_variations.get(
+                "variation_filename", "variation")}"
             raw_image_filename = image_helper.save_raw_image(dict_img_variations.get(
-                "image_data", ""), f"{idx}_{dict_img_variations.get("variation_filename", "")}")
+                "image_data", ""), variation_filename, idx)
             print(f"Image {idx+1} saved as {raw_image_filename}")
 
 
 if __name__ == "__main__":
-    # generate_images_from_style()
-    generate_images_from_reference_image()
+    generate_images_from_style()
+    # generate_images_from_reference_image()

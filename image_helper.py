@@ -410,51 +410,103 @@ class ImageHelper:
 
         return image_paths
 
-    def convert_to_png(self, image_filepath: str) -> str:
+    def convert_to_png(self, image_filepath: str, max_size: int = 4 * 1024 * 1024, min_resize_factor: float = 0.4) -> str:
         """
-        Converts a JPEG image to PNG format. If the image is already a PNG, it returns the original filepath.
-        This method currently supports only JPG and JPEG formats.
+        Converts a JPEG image to PNG format and ensures the resulting PNG file size does not exceed max_size.
+        Utilizes color quantization first and, if necessary, incremental resizing to reduce file size efficiently 
+        without significant loss of detail. If the image is already a PNG, it checks and optimizes the file size.
 
         Args:
             image_filepath (str): The file path to the image to be converted.
+            max_size (int): The maximum allowed file size in bytes. Defaults to 4MB.
 
         Returns:
-            str: The file path to the converted PNG image.
+            str: The file path to the converted and optimized PNG image.
 
         Raises:
             FileNotFoundError: If the specified image file does not exist.
-            ValueError: If the image format is not JPG or JPEG.
-            Exception: If an error occurs during the conversion process.
+            ValueError: If the image format is not JPG, JPEG, or PNG.
+            Exception: If an error occurs during the conversion or optimization process.
         """
+
+        MB = 1024 * 1024
         if not os.path.isfile(image_filepath):
             raise FileNotFoundError(
                 f"The file '{image_filepath}' does not exist.")
 
         file_extension = os.path.splitext(image_filepath)[1].lower()
 
+        # Convert JPG/JPEG to PNG if necessary
         if file_extension in ['.jpg', '.jpeg']:
             try:
-                # Open the original image
                 with Image.open(image_filepath) as img:
-                    # Define the new filename with .png extension
                     new_filepath = os.path.splitext(image_filepath)[0] + '.png'
-
-                    # Convert and save the image as PNG
-                    img.save(new_filepath, 'PNG')
-
-                print(f"Converted '{image_filepath}' to '{new_filepath}'.")
-                return new_filepath
-
+                    # Ensure RGBA mode for PNG quality
+                    img = img.convert('RGBA')
+                    img.save(new_filepath, 'PNG', optimize=True)
+                    # print((f"Converted '{image_filepath}' to '"
+                    #        f"{new_filepath}'."))
+                    image_filepath = new_filepath  # Update filepath to the new PNG
             except Exception as e:
-                print(f"An error occurred while converting '{
-                      image_filepath}' to PNG: {e}")
+                print((f"An error occurred while converting '"
+                       f"{image_filepath}' to PNG: {e}"))
                 raise
+        elif file_extension != '.png':
+            raise ValueError(
+                "Unsupported file format. Only JPG, JPEG, and PNG formats are supported.")
 
-        elif file_extension == '.png':
-            print(f"The file '{
-                  image_filepath}' is already a PNG. No conversion needed.")
+        # Step 1: Apply quantization
+        try:
+            current_size: int = os.path.getsize(image_filepath)
+            if current_size > max_size:
+                with Image.open(image_filepath) as img:
+                    # Convert to RGB if necessary for MEDIANCUT quantization
+                    if img.mode == 'RGBA':
+                        img = img.convert('RGB')
+                    quantized_img = img.quantize(
+                        method=Image.MEDIANCUT, colors=256)
+                    quantized_img.save(image_filepath, 'PNG', optimize=True)
+
+            # Check size again after quantization
+            original_size: int = current_size
+            current_size = os.path.getsize(image_filepath)
+            # print((f"Applied quantization; file size was {original_size / MB:.2f}MB. and is now "
+            #        f"{current_size / MB:.2f}MB."))
+
+            # Step 2: Incremental resizing if still above size limit
+            if current_size > max_size:
+                with Image.open(image_filepath) as img:
+                    resize_factor = 0.95  # Start by reducing size by 5%
+
+                    while current_size > max_size and resize_factor >= min_resize_factor:
+                        # Calculate new dimensions
+                        new_width = int(img.width * resize_factor)
+                        new_height = int(img.height * resize_factor)
+                        resized_img = img.resize(
+                            (new_width, new_height), Image.Resampling.LANCZOS)
+
+                        resized_img.save(
+                            image_filepath, 'PNG', optimize=True)
+
+                        # Update file size
+                        current_size = os.path.getsize(image_filepath)
+                        # print((f"Resized and quantized image to {new_width}x"
+                        #        f"{new_height} pixels; file size is now "
+                        #        f"{current_size / MB:.2f}MB."))
+
+                        # Reduce resize factor for next iteration if necessary
+                        resize_factor -= 0.05
+
+                    if current_size > max_size:
+                        raise Exception((f"Unable to reduce the image size below "
+                                         f"{max_size / MB:.2f}MB after resizing and optimization."))
+
+                    # print((f"Final image saved as '{image_filepath}'. file size was {original_size / MB:.2f}MB. and is now "
+                    #        f"{current_size / MB:.2f}MB."))
+
             return image_filepath
 
-        else:
-            raise ValueError(
-                "Unsupported file format. Only JPG and JPEG formats can be converted to PNG.")
+        except Exception as e:
+            print((f"An error occurred while optimizing '"
+                   f"{image_filepath}': {e}"))
+            raise
